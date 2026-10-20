@@ -276,7 +276,7 @@ function vPick() {
 function newDraft(su, v) {
   return {uid:uid(), visita_id:v ? v.id : '', sucursal_id:su.id, llegada:nowHM(), termino:'', correo:su.correo || '',
     tipos:v && v.tipo ? [v.tipo] : [], otro:'', reemplazo:'no',
-    equipos:eqsOf(su.id).map(e => Object.assign({}, e, {atendido:true, nuevo:false, fotos:{}})),
+    equipos:eqsOf(su.id).map(e => Object.assign({}, e, {atendido:true, nuevo:false, fotos:{}, aroma_anterior:e.aroma || ''})),
     trabajo:[], resultado:'', obs:'', proxima:addD((S.cat && S.cat.diasProxima) || 30), seguimiento:'no', motivo:'',
     cliente:{nombre:su.encargado || '', rut:'', cargo:''}, firma:null, ausente:false};
 }
@@ -301,8 +301,27 @@ function vStep2(d) {
   <div class="card spread"><div><h3>Equipo de reemplazo instalado</h3><p class="muted small">Si dejaste un equipo en reemplazo de otro.</p></div>
     <div class="seg">${[['si','Sí'],['no','No']].map(([k, t]) => `<button data-act="set" data-k="reemplazo" data-v="${k}" aria-pressed="${d.reemplazo === k}">${t}</button>`).join('')}</div></div>`;
 }
+const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function aromaHint(e) {
+  const a = String(e.aroma || '').trim(), lista = (S.cat && S.cat.aromas) || [];
+  const parts = [];
+  if (e.aroma_anterior && a && norm(a) !== norm(e.aroma_anterior)) parts.push(`Cambio de aroma: antes era ${esc(e.aroma_anterior)}.`);
+  if (a && lista.length && !lista.some(x => norm(x) === norm(a))) parts.push('Este aroma no está en la lista; se guardará igual.');
+  return parts.join(' ');
+}
+function aromaSuggest(i) {
+  const el = document.getElementById('a' + i), box = document.getElementById('sg' + i); if (!el || !box) return;
+  const q = norm(el.value), words = q.split(/\s+/).filter(Boolean);
+  const lista = (S.cat && S.cat.aromas) || [];
+  if (!words.length || document.activeElement !== el) { box.innerHTML = ''; return; }
+  const m = lista.filter(a => { const n = norm(a); return words.every(w => n.includes(w)); })
+    .sort((a, b) => (norm(b).startsWith(q) - norm(a).startsWith(q)) || a.localeCompare(b, 'es')).slice(0, 12);
+  box.innerHTML = m.length && !(m.length === 1 && norm(m[0]) === q)
+    ? m.map(a => `<button type="button" class="chip sm" data-act="pickAroma" data-i="${i}" data-v="${esc(a)}">${esc(a)}</button>`).join('')
+    : (m.length ? '' : '<span class="hint">Sin coincidencias en la lista.</span>');
+}
 function vStep3(d) {
-  const modelos = (S.cat && S.cat.modelos) || [], aromas = (S.cat && S.cat.aromas) || [];
+  const modelos = (S.cat && S.cat.modelos) || [];
   return `<div class="card"><h3>3 fotos por equipo</h3><p class="muted small" style="margin-top:4px">Por dentro (cómo estaba), cómo quedó y una vista general desde más lejos.</p></div>
   ${d.equipos.map((e, i) => `<article class="card stack eq ${e.atendido ? '' : 'off'}">
     <header class="eq-h"><div style="min-width:0"><span class="eq-n">Equipo ${i + 1}${e.nuevo ? ' · nuevo' : ''}</span><h4>${esc(e.modelo || 'Equipo nuevo')}</h4>
@@ -314,12 +333,12 @@ function vStep3(d) {
       <div class="field"><label for="c${i}">Color</label><input id="c${i}" data-bind="d.equipos.${i}.color" value="${esc(e.color)}"></div>
       <div class="field"><label for="s${i}">N° de serie</label><input id="s${i}" data-bind="d.equipos.${i}.serie" value="${esc(e.serie)}"></div>
       <div class="field"><label for="u${i}">Ubicación</label><input id="u${i}" data-bind="d.equipos.${i}.ubicacion" value="${esc(e.ubicacion)}" placeholder="ej. Entrada principal"></div></div>` : ''}
-    <div class="field"><label for="a${i}">Aroma / lote</label><input id="a${i}" list="aromas" data-bind="d.equipos.${i}.aroma" value="${esc(e.aroma)}"></div>
+    <div class="field"><label for="a${i}">Aroma</label><input id="a${i}" autocomplete="off" autocapitalize="none" spellcheck="false" data-bind="d.equipos.${i}.aroma" data-aroma="${i}" value="${esc(e.aroma)}" placeholder="Escribe para buscar el aroma">
+      <div class="sugg" id="sg${i}"></div><span class="hint" id="ah${i}">${aromaHint(e)}</span></div>
     <div class="shots">${FOTOS.map(f => { const v = e.fotos[f.k]; return `<label class="shot ${v ? 'has' : ''}">
       <input class="vh" type="file" accept="image/*" capture="environment" data-photo="${i}:${f.k}">
       ${v ? `<img src="${v}" alt="${f.t}"><span class="cap">${f.t} · cambiar</span>` : `${ICONS.cam}<b>${f.t}</b><span>${f.h}</span>`}</label>`; }).join('')}</div>
     </div></article>`).join('')}
-  <datalist id="aromas">${aromas.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
   <datalist id="modelos">${modelos.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
   <button class="btn" data-act="addEq">+ Agregar equipo nuevo</button>`;
 }
@@ -373,6 +392,7 @@ function validate() {
     for (const [i, e] of d.equipos.entries()) {
       if (!e.atendido) continue;
       if (e.nuevo && (!e.modelo.trim() || !e.ubicacion.trim())) return `Equipo ${i + 1}: falta el modelo o la ubicación.`;
+      if (!String(e.aroma || '').trim()) return `Equipo ${i + 1}: falta el aroma.`;
       const miss = FOTOS.filter(f => !e.fotos[f.k]).map(f => f.t.toLowerCase());
       if (miss.length) return `Equipo ${i + 1}: falta${miss.length > 1 ? 'n' : ''} la foto${miss.length > 1 ? 's' : ''} ${miss.join(', ')}.`;
     }
@@ -650,7 +670,14 @@ const ACT = {
   set(t) { S.draft[t.dataset.k] = t.dataset.v; S.err = ''; saveDraft(); render(); },
   next() { const e = validate(); S.err = e; if (!e) { S.step++; if (S.step === 5 && !S.draft.termino) S.draft.termino = nowHM(); saveDraft(); scrollTop(); } render(); },
   prev() { S.err = ''; S.step--; saveDraft(); render(); scrollTop(); },
-  addEq() { S.draft.equipos.push({id:'nuevo-' + uid().slice(0, 8), sucursal_id:S.draft.sucursal_id, modelo:'', color:'', serie:'', aroma:'', ubicacion:'', atendido:true, nuevo:true, fotos:{}}); saveDraft(); render(); },
+  addEq() { S.draft.equipos.push({id:'nuevo-' + uid().slice(0, 8), sucursal_id:S.draft.sucursal_id, modelo:'', color:'', serie:'', aroma:'', ubicacion:'', atendido:true, nuevo:true, fotos:{}, aroma_anterior:''}); saveDraft(); render(); },
+  pickAroma(t) {
+    const i = +t.dataset.i, v = t.dataset.v, el = document.getElementById('a' + i);
+    S.draft.equipos[i].aroma = v; if (el) el.value = v;
+    const box = document.getElementById('sg' + i); if (box) box.innerHTML = '';
+    const h = document.getElementById('ah' + i); if (h) h.innerHTML = aromaHint(S.draft.equipos[i]);
+    saveDraft();
+  },
   delEq(t) { S.draft.equipos.splice(+t.dataset.v, 1); saveDraft(); render(); },
   async close() {
     const e = validate(); if (e) { S.err = e; return render(); }
@@ -744,9 +771,13 @@ function onBind(e) {
   if (el.dataset.fmt === 'rut') { v = fmtRut(v); if (el.value !== v) el.value = v; }
   setPath(p, v);
   if (p.startsWith('d.')) saveDraft();
+  if (el.dataset.aroma !== undefined) { if (e.type === 'input') aromaSuggest(+el.dataset.aroma); const h = document.getElementById('ah' + el.dataset.aroma); if (h) h.innerHTML = aromaHint(S.draft.equipos[+el.dataset.aroma]); }
   if (el.dataset.rerender && e.type === 'change') render();
 }
 document.addEventListener('input', onBind);
+document.addEventListener('pointerdown', e => { if (e.target.closest('[data-act=pickAroma]')) e.preventDefault(); });
+document.addEventListener('focusin', e => { const el = e.target; if (el.dataset && el.dataset.aroma !== undefined) { try { el.select(); } catch (x) {} } });
+document.addEventListener('focusout', e => { const el = e.target; if (el.dataset && el.dataset.aroma !== undefined) setTimeout(() => { const b = document.getElementById('sg' + el.dataset.aroma); if (b && document.activeElement !== el) b.innerHTML = ''; }, 250); });
 document.addEventListener('change', async e => {
   onBind(e);
   const el = e.target; if (!el.dataset.photo || !el.files || !el.files[0]) return;

@@ -177,7 +177,7 @@
     section('Equipos');
     const eqs = s.equipos.filter(q => q.atendido);
     table(['N°', 'Modelo', 'Color', 'N° de serie', 'Aroma / lote', 'Ubicación'],
-      eqs.map((q, i) => [String(i + 1), q.modelo, q.color, q.serie, q.aroma, q.ubicacion]), [24, 120, 52, 95, 110, CW - 401]);
+      eqs.map((q, i) => [String(i + 1), q.modelo, q.color, q.serie, q.aroma + (q.aroma_anterior && q.aroma && q.aroma_anterior.trim().toLowerCase() !== q.aroma.trim().toLowerCase() ? ' (antes: ' + q.aroma_anterior + ')' : ''), q.ubicacion]), [24, 120, 52, 95, 110, CW - 401]);
 
     section('Revisión y trabajo realizado');
     checks(TRABAJOS.map(t => ({t, on: s.trabajo.includes(t)})));

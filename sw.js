@@ -1,5 +1,5 @@
 /* Guarda la app en el teléfono para que abra sin señal */
-const CACHE = 'eco-servicio-v1';
+const CACHE = 'eco-servicio-v2';
 const FILES = ['./', './index.html', './app.js', './pdf.js', './logo.js', './config.js', './vendor/pdf-lib.min.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
